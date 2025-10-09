@@ -24,6 +24,8 @@
 #include "gpio.h"
 #include <unistd.h>
 
+#ifdef __USE_SYSFS__
+
 #define GPIO_FILENAME_DEFINE(pin,field) char fileName[255] = {0}; \
         sprintf(fileName, "/sys/class/gpio/gpio%d/%s", pin, field);
 
@@ -181,3 +183,130 @@ int getGPIODirection(int pin)
     }
     return ret;
 }
+
+#else
+
+#include <gpiod.h>
+
+static struct gpiod_chip *chip = NULL;
+
+static struct {
+	struct gpiod_line *line;
+	int direction;
+	int value;
+} gpio_ports[256] = {NULL};
+
+int exportGPIOPin(int pin)
+{
+	char gpioName[8];
+	int offset = pin & 0xFF;
+	struct gpiod_line *line = NULL;
+	if(NULL == chip)
+	{
+		chip = gpiod_chip_open_by_name("gpiochip0");
+	}
+	if(NULL != chip)
+	{
+		snprintf(gpioName, sizeof(gpioName), "GPIO%d", offset);
+		line = gpiod_chip_find_line(chip, gpioName);
+		if(NULL != line)
+		{
+			int cr = gpiod_line_request_input(line, "libu8g2arm");
+			if(cr)
+			{
+				perror("gpio_line_request_input");
+			}
+		}
+	}
+	// fprintf(stderr, "%s(%i)=>(chip=%p, line=%p)" "\n", __func__, pin, chip, line);
+	gpio_ports[offset].line = line ;
+	return(0);
+}
+
+int unexportGPIOPin(int pin)
+{
+	int offset = pin & 0xFF;
+	struct gpiod_line *line = gpio_ports[pin & 0xFF].line;
+	if(line)
+	{
+		gpiod_line_release(line);
+	}
+	// fprintf(stderr, "%s(%i)" "\n", __func__, pin);
+	return(0);
+}
+
+int getGPIOValue(int pin)
+{
+	int value = -1;
+	struct gpiod_line *line = gpio_ports[pin & 0xFF].line;
+	if(NULL != line)
+	{
+		value = gpiod_line_get_value(line);
+	}
+	fprintf(stderr, "%s(%i)=>%i" "\n", __func__, pin, value);
+	return(value);
+}
+
+int setGPIOValue(int pin, int value)
+{
+	int offset = pin & 0xFF;
+	int actualValue = -1;
+	struct gpiod_line *line = gpio_ports[offset].line;
+	if(NULL != line)
+	{
+		gpio_ports[offset].value = value == GPIO_HIGH ? 1 : 0;
+		actualValue = gpiod_line_set_value(line, value);
+		if(-1 == actualValue)
+		{
+			perror("gpiod_line_set_value");
+		}
+	}
+	// fprintf(stderr, "%s(%i, %i)(line=%p, actualvalue=%i)" "\n", __func__, pin, value, line, actualValue);
+	return(0);
+}
+
+int setGPIODirection(int pin, int direction)
+{
+	int offset = pin & 0xFF;
+	struct gpiod_line *line = gpio_ports[offset].line;
+	if(line)
+	{
+		gpio_ports[offset].direction = direction;
+		if(GPIO_OUT == direction)
+		{
+			gpiod_line_release(line);
+			int cr = gpiod_line_request_output(line, "libu8g2arm", 0);
+			if(cr)
+			{
+				perror("gpio_line_request_input");
+			}
+		}
+		else
+		{
+			gpiod_line_release(line);
+			int cr = gpiod_line_request_input(line, "libu8g2arm");
+			if(cr)
+			{
+				perror("gpio_line_request_input");
+			}
+		}
+	}
+	// fprintf(stderr, "%s(%i, %i)" "\n", __func__, pin, direction);
+	return(0);
+}
+
+int getGPIODirection(int pin)
+{
+	int direction = 0;
+	int offset = pin & 0xFF;
+	struct gpiod_line *line = gpio_ports[offset].line;
+	if(line)
+	{
+		direction = gpio_ports[offset].direction;
+	}
+	// fprintf(stderr, "%s(%i)=>%i" "\n", __func__, pin, direction);
+	return(direction);
+}
+
+#endif
+
