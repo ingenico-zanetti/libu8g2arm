@@ -9,6 +9,7 @@
 #include <libu8g2arm/u8g2arm.h>
 
 #include <stdio.h>
+#include <sys/utsname.h>
 
 u8g2_t u8g2;
 
@@ -17,44 +18,85 @@ uint8_t *frameBuffer;
 #undef __INVERSE_VIDEO__
 // #define __INVERSE_VIDEO__
 
-static void drawValue(u8g2_t *p, int startX, int startY, const char *title, const char *value){
-  u8g2_DrawStr(p, startX + 4,  startY + 13, title);
-  u8g2_DrawStr(p, startX + 28, startY + 26, value);
-  u8g2_DrawRFrame(p, startX, startY, 64, 32, 5);
+typedef struct {
+	int zeroLength;
+	int oneLength;
+	int zeroCount;
+	int oneCount;
+	int currentValue;
+	int pinNumber;
+	char name[8];
+}Debouncer ;
+
+void debouncerInit(Debouncer *debouncer, int gpio, const char *pinName, int length0, int length1){
+	debouncer->pinNumber = gpio;
+	strncpy(debouncer->name, pinName, 7); debouncer->name[7] = '\0';
+	debouncer->zeroLength = length0;
+	debouncer->oneLength  = length1;
+	debouncer->zeroCount = 0;
+	debouncer->oneCount  = 0;
+	debouncer->currentValue = -1;
+	exportGPIOPin(gpio);
 }
 
-static int gain = 0;
+#define NO_EDGE (0)
+#define FALLING_EDGE (-1)
+#define RAISING_EDGE (1)
 
-void loop(u8g2_t *p) {
-  char str[16];
-  
-#ifdef __INVERSE_VIDEO__
-  memset(frameBuffer, 0xFF, 8 * 128);
-#else
-  memset(frameBuffer, 0x00, 8 * 128);
-#endif
-
-  sprintf(str, "+%2ddB", gain);
-  drawValue(p, 0,  0, "GAIN:", str);
-  
-  sprintf(str, "%4dK", 3300 + gain * 64);
-  drawValue(p, 0,  32, "COLOR:", str);
-  
-  sprintf(str, "%3d", 5 * gain);
-  drawValue(p, 0,  64, "ANGLE:", str);
-  
-  sprintf(str, "%3d", 900 + 5 * gain);
-  drawValue(p, 0,  96, "GAMMA:", str);
-  u8g2_SendBuffer(p);
-
-  // usleep(100000);
-
-  gain++;
-  gain &= 0x3f;
+int debouncerUpdate(Debouncer *debouncer){
+	int edge = NO_EDGE;
+	if(0 == getGPIOValue(debouncer->pinNumber)){
+		debouncer->oneCount = 0;
+		if(debouncer->zeroCount < debouncer->zeroLength){
+			debouncer->zeroCount++;
+			if(debouncer->zeroCount == debouncer->zeroLength){
+				if(1 == debouncer->currentValue){
+					edge = FALLING_EDGE;
+				}
+				debouncer->currentValue = 0;
+			}
+		}
+	}else{
+		debouncer->zeroCount = 0;
+		if(debouncer->oneCount < debouncer->oneLength){
+			debouncer->oneCount++;
+			if(debouncer->oneCount == debouncer->oneLength){
+				if(0 == debouncer->currentValue){
+					edge = RAISING_EDGE;
+				}
+				debouncer->currentValue = 1;
+			}
+		}
+	}
+	if(edge){
+		fprintf(stderr, "%s(%s):edge=%d" "\n", __func__, debouncer->name, edge);
+	}
+	return(edge);
 }
+
+void debouncerPrintf(Debouncer *debouncer, const char *title){
+	fprintf(stderr, "%s: {.0L=%d, .1L=%d, .0C=%d, .1C=%d, .current=%2d}" "\n",
+			title,
+			debouncer->zeroLength,
+			debouncer->oneLength,
+			debouncer->zeroCount,
+			debouncer->oneCount,
+			debouncer->currentValue);
+}
+
+void debouncerTest(void){
+	Debouncer enc3Switch;
+	debouncerInit(&enc3Switch, 17, "ENC3 SW", 3, 3);
+	for(;;){
+		usleep(1000);
+		debouncerUpdate(&enc3Switch);
+	}
+}
+
 
 int main(int argc, const char *argv[])
 {
+  debouncerTest();
   uint8_t *frameBuffer;
 
   u8x8_t *p_u8x8 = u8g2_GetU8x8(&u8g2);
@@ -92,7 +134,6 @@ int main(int argc, const char *argv[])
   if(argc > 1){
 	  FILE *logo = fopen(argv[1], "rb");
 	  if(logo){
-#if 1
 		  char ligne[128 + 2];
 		  // char *line = NULL;
 		  int y = 0;
@@ -118,10 +159,6 @@ int main(int argc, const char *argv[])
 				  break;
 			  }
 		  }
-#else
-		  frameBuffer[127+128] = 0x80; // x = 15, y = 0
-		  frameBuffer[127+256] = 0x01; // x = 16, y = 0
-#endif
 		  fclose(logo);
 	  }
   }else{
@@ -131,14 +168,11 @@ int main(int argc, const char *argv[])
 	  u8g2_DrawStr(p, 8, 32, "A Pi 5");
 	  u8g2_DrawStr(p, 16, 48, "Video");
 	  u8g2_DrawStr(p, 24, 64, "Camera");
+	  struct utsname buf;
+	  uname(&buf);
+	  u8g2_DrawStr(p, 0, 80, buf.nodename);
   }
   u8g2_SendBuffer(p);
-  // Leave it on the screen for a time
-  // sleep(5);
-
-  // Clear the screen
-  //u8g2_ClearBuffer(&u8g2); // clear the internal memory
-  //u8g2_SendBuffer(&u8g2);  // transfer internal memory to the display
 
   return 0;
 }
