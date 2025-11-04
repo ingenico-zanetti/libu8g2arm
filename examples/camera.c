@@ -18,6 +18,10 @@ uint8_t *frameBuffer;
 #undef __INVERSE_VIDEO__
 // #define __INVERSE_VIDEO__
 
+#define NO_EDGE (0)
+#define FALLING_EDGE (-1)
+#define RAISING_EDGE (1)
+
 typedef struct {
 	int zeroLength;
 	int oneLength;
@@ -25,6 +29,7 @@ typedef struct {
 	int oneCount;
 	int currentValue;
 	int pinNumber;
+	int edge;
 	char name[8];
 }Debouncer ;
 
@@ -36,12 +41,9 @@ void debouncerInit(Debouncer *debouncer, int gpio, const char *pinName, int leng
 	debouncer->zeroCount = 0;
 	debouncer->oneCount  = 0;
 	debouncer->currentValue = -1;
+	debouncer->edge = NO_EDGE;
 	exportGPIOPin(gpio);
 }
-
-#define NO_EDGE (0)
-#define FALLING_EDGE (-1)
-#define RAISING_EDGE (1)
 
 int debouncerUpdate(Debouncer *debouncer){
 	int edge = NO_EDGE;
@@ -68,8 +70,9 @@ int debouncerUpdate(Debouncer *debouncer){
 			}
 		}
 	}
+	debouncer->edge = edge;
 	if(edge){
-		fprintf(stderr, "%s(%s):edge=%d" "\n", __func__, debouncer->name, edge);
+		// fprintf(stderr, "%s(%s):edge=%d" "\n", __func__, debouncer->name, edge);
 	}
 	return(edge);
 }
@@ -86,10 +89,34 @@ void debouncerPrintf(Debouncer *debouncer, const char *title){
 
 void debouncerTest(void){
 	Debouncer enc3Switch;
+	Debouncer enc3Data;
+	Debouncer enc3Clock;
 	debouncerInit(&enc3Switch, 17, "ENC3 SW", 3, 3);
+	debouncerInit(&enc3Data, 27, "ENC3 DT", 3, 3);
+	debouncerInit(&enc3Clock, 22, "ENC3 CLK", 3, 3);
 	for(;;){
 		usleep(1000);
 		debouncerUpdate(&enc3Switch);
+		debouncerUpdate(&enc3Data);
+		debouncerUpdate(&enc3Clock);
+		switch(enc3Switch.edge){
+			case NO_EDGE:
+			default:
+				break;
+			case FALLING_EDGE:
+				fprintf(stderr, "ENC3Switch: Falling" "\n");
+				break;
+			case RAISING_EDGE:
+				fprintf(stderr, "ENC3Switch: Raising" "\n");
+				break;
+		}
+		if(RAISING_EDGE == enc3Clock.edge){
+			if(0 == enc3Data.currentValue){
+				fprintf(stderr, "ENC3:  CW step" "\n");
+			}else if(1 == enc3Data.currentValue){
+				fprintf(stderr, "ENC3: CCW step" "\n");
+			}
+		}
 	}
 }
 
