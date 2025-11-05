@@ -88,6 +88,8 @@ void debouncerPrintf(Debouncer *debouncer, const char *title){
 			debouncer->currentValue);
 }
 
+#define DOUBLE_CLICK_DELAY_MS (250)
+
 #define GUI_EVENT_SINGLE_CLICK (1)
 #define GUI_EVENT_DOUBLE_CLICK (2)
 #define GUI_EVENT_LONG_CLICK (3)
@@ -124,7 +126,7 @@ void gui(u8g2_t *p){
 		debouncerUpdate(&enc3Clock);
 		switch(enc3Switch.edge){
 			case NO_EDGE:
-				if(singleClickPending && ((counter - singleClickPending) > 500)){
+				if(singleClickPending && ((counter - singleClickPending) > DOUBLE_CLICK_DELAY_MS)){
 					// fprintf(stderr, "=> single click" "\n");
 					singleClickPending = 0;
 					guiEvent(GUI_EVENT_SINGLE_CLICK);
@@ -146,11 +148,11 @@ void gui(u8g2_t *p){
 					}else{
 						// Detect double click
 						uint64_t delta = counter - buttonRelease;
-						if(delta < 500){
-							// 2 button releases in less than 500ms
+						if(delta < DOUBLE_CLICK_DELAY_MS){
+							// 2 button releases in less than DOUBLE_CLICK_DELAY_MS ms
 							// fprintf(stderr, "=> double click" "\n");
 							singleClickPending = 0;
-						guiEvent(GUI_EVENT_DOUBLE_CLICK);
+							guiEvent(GUI_EVENT_DOUBLE_CLICK);
 						}else{
 							// fprintf(stderr, "=> single click pending" "\n");
 							singleClickPending = counter;
