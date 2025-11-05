@@ -10,6 +10,7 @@
 
 #include <stdio.h>
 #include <sys/utsname.h>
+#include <sys/time.h>
 
 u8g2_t u8g2;
 
@@ -87,34 +88,87 @@ void debouncerPrintf(Debouncer *debouncer, const char *title){
 			debouncer->currentValue);
 }
 
-void debouncerTest(void){
+#define GUI_EVENT_SINGLE_CLICK (1)
+#define GUI_EVENT_DOUBLE_CLICK (2)
+#define GUI_EVENT_LONG_CLICK (3)
+#define GUI_EVENT_CCW (4)
+#define GUI_EVENT_UP (GUI_EVENT_CCW)
+#define GUI_EVENT_CW (5)
+#define GUI_EVENT_DOWN (GUI_EVENT_CW)
+
+void guiEvent(int event){
+	(void)event;
+	fprintf(stderr, "%s(%d)" "\n", __func__, event);
+}
+
+void gui(u8g2_t *p){
+	(void)p;
+
 	Debouncer enc3Switch;
 	Debouncer enc3Data;
 	Debouncer enc3Clock;
 	debouncerInit(&enc3Switch, 17, "ENC3 SW", 3, 3);
 	debouncerInit(&enc3Data, 27, "ENC3 DT", 3, 3);
 	debouncerInit(&enc3Clock, 22, "ENC3 CLK", 3, 3);
+
+	uint64_t counter = 0;
+	uint64_t singleClickPending = 0;
+	uint64_t buttonPress;
+	uint64_t buttonRelease;
+
 	for(;;){
 		usleep(1000);
+		counter++;
 		debouncerUpdate(&enc3Switch);
 		debouncerUpdate(&enc3Data);
 		debouncerUpdate(&enc3Clock);
 		switch(enc3Switch.edge){
 			case NO_EDGE:
+				if(singleClickPending && ((counter - singleClickPending) > 500)){
+					// fprintf(stderr, "=> single click" "\n");
+					singleClickPending = 0;
+					guiEvent(GUI_EVENT_SINGLE_CLICK);
+				}
 			default:
 				break;
 			case FALLING_EDGE:
-				fprintf(stderr, "ENC3Switch: Falling" "\n");
+				// fprintf(stderr, "ENC3Switch: Falling" "\n");
+				buttonPress = counter;
 				break;
 			case RAISING_EDGE:
-				fprintf(stderr, "ENC3Switch: Raising" "\n");
+				{
+					// fprintf(stderr, "ENC3Switch: Raising" "\n");
+					uint64_t duration = counter - buttonPress;
+					if(duration > 1000){
+						// fprintf(stderr, "> 1s => long click" "\n");
+						singleClickPending = 0;
+						guiEvent(GUI_EVENT_LONG_CLICK);
+					}else{
+						// Detect double click
+						uint64_t delta = counter - buttonRelease;
+						if(delta < 500){
+							// 2 button releases in less than 500ms
+							// fprintf(stderr, "=> double click" "\n");
+							singleClickPending = 0;
+						guiEvent(GUI_EVENT_DOUBLE_CLICK);
+						}else{
+							// fprintf(stderr, "=> single click pending" "\n");
+							singleClickPending = counter;
+						}
+
+					}
+					buttonRelease = counter;
+				}
+
 				break;
 		}
 		if(RAISING_EDGE == enc3Clock.edge){
 			if(0 == enc3Data.currentValue){
-				fprintf(stderr, "ENC3:  CW step" "\n");
+				// fprintf(stderr, "ENC3:  CW step" "\n");
+				guiEvent(GUI_EVENT_CW);
 			}else if(1 == enc3Data.currentValue){
-				fprintf(stderr, "ENC3: CCW step" "\n");
+				// fprintf(stderr, "ENC3: CCW step" "\n");
+				guiEvent(GUI_EVENT_CCW);
 			}
 		}
 	}
@@ -123,7 +177,6 @@ void debouncerTest(void){
 
 int main(int argc, const char *argv[])
 {
-  debouncerTest();
   uint8_t *frameBuffer;
 
   u8x8_t *p_u8x8 = u8g2_GetU8x8(&u8g2);
@@ -200,6 +253,7 @@ int main(int argc, const char *argv[])
 	  u8g2_DrawStr(p, 0, 80, buf.nodename);
   }
   u8g2_SendBuffer(p);
+  gui(p);
 
   return 0;
 }
