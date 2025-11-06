@@ -98,9 +98,67 @@ void debouncerPrintf(Debouncer *debouncer, const char *title){
 #define GUI_EVENT_CW (5)
 #define GUI_EVENT_DOWN (GUI_EVENT_CW)
 
-void guiEvent(int event){
+
+void guiEvent(int event, int multiplier){
 	(void)event;
-	fprintf(stderr, "%s(%d)" "\n", __func__, event);
+	(void)multiplier;
+	fprintf(stderr, "%s(%dx%d)" "\n", __func__, event, multiplier);
+}
+struct AccelerationThreshold {
+	int speed; // in pulse per second
+	int multiplier;
+};
+
+struct AccelerationThreshold accelerationThresholds[] = {
+	{ 25, 5 },
+	{ 50, 25},
+	{ 0, 0 }
+};
+
+struct AccelerationContext {
+	struct AccelerationThreshold *thresholds;
+	int thresholdCount;
+	uint64_t lastTime;
+	int guiEvent;
+	const char *name;
+};
+
+void  accelerationContextInit(struct AccelerationContext *context, int event, struct AccelerationThreshold *thresholds, const char *name){
+	context->lastTime = 0;
+	context->guiEvent = event;
+	context->thresholdCount = 0;
+	context->thresholds = thresholds;
+	while(thresholds[context->thresholdCount].speed){
+		context->thresholdCount++;
+	}
+	context->name = strdup(name);
+}
+
+void accelerationContextReset(struct AccelerationContext *context){
+	(void)context;
+}
+
+int getMultiplier(struct AccelerationContext *context, int speed){
+	int multiplier = 1;
+	int i = context->thresholdCount;
+	while(i--){
+		if(speed > context->thresholds[i].speed){
+			multiplier = context->thresholds[i].multiplier;
+			break;
+		}
+	}
+	// fprintf(stderr, "%s(speed=%i pps)=>%i (i=%d)" "\n", __func__, speed, multiplier, i);
+	return(multiplier);
+}
+
+void accelerationContextUpdate(struct AccelerationContext *context, uint64_t ticks){
+	// fprintf(stderr, "%s(%s, %lu)" "\n", __func__, context->name, ticks);
+	uint64_t delta = ticks - context->lastTime;
+	// compute speed
+	uint64_t speed = 1000 / delta;
+	// fprintf(stderr, "delta=%lu, speed=%lu pps (pulse per second)" "\n", delta, speed);
+	context->lastTime = ticks;
+	guiEvent(context->guiEvent, getMultiplier(context, speed));
 }
 
 void gui(u8g2_t *p){
@@ -118,6 +176,12 @@ void gui(u8g2_t *p){
 	uint64_t buttonPress;
 	uint64_t buttonRelease;
 
+	struct AccelerationContext cwContext;
+	struct AccelerationContext ccwContext;
+
+	accelerationContextInit(&cwContext, GUI_EVENT_CW, accelerationThresholds, "CW");
+	accelerationContextInit(&ccwContext, GUI_EVENT_CCW, accelerationThresholds, "CCW");
+
 	for(;;){
 		usleep(1000);
 		counter++;
@@ -126,10 +190,10 @@ void gui(u8g2_t *p){
 		debouncerUpdate(&enc3Clock);
 		switch(enc3Switch.edge){
 			case NO_EDGE:
-				if(singleClickPending && ((counter - singleClickPending) > DOUBLE_CLICK_DELAY_MS)){
+				if(singleClickPending && ((counter - singleClickPending) > (DOUBLE_CLICK_DELAY_MS / 2))){
 					// fprintf(stderr, "=> single click" "\n");
 					singleClickPending = 0;
-					guiEvent(GUI_EVENT_SINGLE_CLICK);
+					guiEvent(GUI_EVENT_SINGLE_CLICK, 1);
 				}
 			default:
 				break;
@@ -144,7 +208,7 @@ void gui(u8g2_t *p){
 					if(duration > 1000){
 						// fprintf(stderr, "> 1s => long click" "\n");
 						singleClickPending = 0;
-						guiEvent(GUI_EVENT_LONG_CLICK);
+						guiEvent(GUI_EVENT_LONG_CLICK, 1);
 					}else{
 						// Detect double click
 						uint64_t delta = counter - buttonRelease;
@@ -152,7 +216,7 @@ void gui(u8g2_t *p){
 							// 2 button releases in less than DOUBLE_CLICK_DELAY_MS ms
 							// fprintf(stderr, "=> double click" "\n");
 							singleClickPending = 0;
-							guiEvent(GUI_EVENT_DOUBLE_CLICK);
+							guiEvent(GUI_EVENT_DOUBLE_CLICK, 1);
 						}else{
 							// fprintf(stderr, "=> single click pending" "\n");
 							singleClickPending = counter;
@@ -167,10 +231,10 @@ void gui(u8g2_t *p){
 		if(RAISING_EDGE == enc3Clock.edge){
 			if(0 == enc3Data.currentValue){
 				// fprintf(stderr, "ENC3:  CW step" "\n");
-				guiEvent(GUI_EVENT_CW);
+				accelerationContextUpdate(&cwContext, counter);
 			}else if(1 == enc3Data.currentValue){
 				// fprintf(stderr, "ENC3: CCW step" "\n");
-				guiEvent(GUI_EVENT_CCW);
+				accelerationContextUpdate(&ccwContext, counter);
 			}
 		}
 	}
