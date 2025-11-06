@@ -165,6 +165,57 @@ void accelerationContextUpdate(struct AccelerationContext *context, uint64_t tic
 	guiEvent(context->guiEvent, getMultiplier(context, speed));
 }
 
+struct MenuItem;
+
+typedef int (*MenuItemCallBack)(struct MenuItem *);
+
+struct MenuItem {
+	const char *path;
+	const char *name;
+	MenuItemCallBack callBack;
+};
+
+#define NUMERICAL_ENTRY_FLAG_TITLE_POSITION_ABOVE (0 << 0)
+#define NUMERICAL_ENTRY_FLAG_TITLE_POSITION_LEFT  (1 << 0)
+#define NUMERICAL_ENTRY_FLAG_TITLE_POSITION_BELOW (2 << 0)
+#define NUMERICAL_ENTRY_FLAG_TITLE_POSITION_RIGHT (3 << 0)
+
+#define NUMERICAL_ENTRY_FLAG_UNIT_POSITION_LEFT (0 << 2)
+#define NUMERICAL_ENTRY_FLAG_UNIT_POSITION_RIGHT (1 << 2)
+
+struct NumericalEntry {
+	const char *title;
+	const char *unit;
+	uint64_t flags;
+	int minValue;
+	int maxValue;
+	int minDelta;
+};
+
+struct NumericalEntry ColorTemperatureEntry = {
+	.title = "Temperature",
+	.unit = "K",
+	.flags = NUMERICAL_ENTRY_FLAG_TITLE_POSITION_ABOVE | NUMERICAL_ENTRY_FLAG_UNIT_POSITION_RIGHT,
+	.minValue = 1000,
+	.maxValue = 10000,
+	.minDelta = 1};
+
+struct MenuItem menus[] = {
+	{ "Resolution/", NULL, NULL },
+	{ "Resolution/4K", NULL, NULL },
+	{ "Resolution/4K2K", NULL, NULL },
+	{ "Resolution/2K2K", NULL, NULL },
+	{ "FrameRate/", NULL, NULL },
+	{ "FrameRate/60", NULL, NULL },
+	{ "FrameRate/30", NULL, NULL },
+	{ "FrameRate/15", NULL, NULL },
+	{ "Compression/", NULL, NULL },
+	{ "Compression/ALL-I(MJPEG)", NULL, NULL },
+	{ "Compression/IBP(H264)", NULL, NULL },
+	{ "temperature/", NULL, NULL },
+	{ NULL, NULL, NULL }
+};
+
 void *gui(void *parameter){
 	u8g2_t *p = (u8g2_t*)parameter;
 
