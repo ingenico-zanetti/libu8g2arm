@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <sys/utsname.h>
 #include <sys/time.h>
+#include <pthread.h>
 
 u8g2_t u8g2;
 
@@ -88,14 +89,17 @@ void debouncerPrintf(Debouncer *debouncer, const char *title){
 			debouncer->currentValue);
 }
 
-#define DOUBLE_CLICK_DELAY_MS (250)
+#define DOUBLE_CLICK_DELAY_MS      (250)
+#define LONG_CLICK_DELAY_MS       (1000)
+#define EXTRA_LONG_CLICK_DELAY_MS (5000)
 
 #define GUI_EVENT_SINGLE_CLICK (1)
 #define GUI_EVENT_DOUBLE_CLICK (2)
 #define GUI_EVENT_LONG_CLICK (3)
-#define GUI_EVENT_CCW (4)
+#define GUI_EVENT_EXTRA_LONG_CLICK (4)
+#define GUI_EVENT_CCW (10)
 #define GUI_EVENT_UP (GUI_EVENT_CCW)
-#define GUI_EVENT_CW (5)
+#define GUI_EVENT_CW (11)
 #define GUI_EVENT_DOWN (GUI_EVENT_CW)
 
 
@@ -161,8 +165,8 @@ void accelerationContextUpdate(struct AccelerationContext *context, uint64_t tic
 	guiEvent(context->guiEvent, getMultiplier(context, speed));
 }
 
-void gui(u8g2_t *p){
-	(void)p;
+void *gui(void *parameter){
+	u8g2_t *p = (u8g2_t*)parameter;
 
 	Debouncer enc3Switch;
 	Debouncer enc3Data;
@@ -205,7 +209,11 @@ void gui(u8g2_t *p){
 				{
 					// fprintf(stderr, "ENC3Switch: Raising" "\n");
 					uint64_t duration = counter - buttonPress;
-					if(duration > 1000){
+					if(duration > EXTRA_LONG_CLICK_DELAY_MS){
+						// Initiate shutdown
+						// u8g2_DrawStr(p, 0, 96, "SHUTDOWN");
+						system("sync ; sudo shutdown -h now");
+					}else if(duration > LONG_CLICK_DELAY_MS){
 						// fprintf(stderr, "> 1s => long click" "\n");
 						singleClickPending = 0;
 						guiEvent(GUI_EVENT_LONG_CLICK, 1);
@@ -238,6 +246,7 @@ void gui(u8g2_t *p){
 			}
 		}
 	}
+	return NULL;
 }
 
 
@@ -319,7 +328,13 @@ int main(int argc, const char *argv[])
 	  u8g2_DrawStr(p, 0, 80, buf.nodename);
   }
   u8g2_SendBuffer(p);
-  gui(p);
+  pthread_t guiThread;
+  pthread_create(&guiThread, NULL, gui, p);
+
+  // Scan IPv4 addresses for eth0 and wlan0
+  for(;;){
+	  sleep(1);
+  }
 
   return 0;
 }
