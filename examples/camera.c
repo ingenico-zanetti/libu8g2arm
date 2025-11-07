@@ -89,7 +89,7 @@ void debouncerPrintf(Debouncer *debouncer, const char *title){
 			debouncer->currentValue);
 }
 
-#define DOUBLE_CLICK_DELAY_MS      (250)
+#define DOUBLE_CLICK_DELAY_MS      (200)
 #define LONG_CLICK_DELAY_MS       (1000)
 #define EXTRA_LONG_CLICK_DELAY_MS (5000)
 
@@ -194,7 +194,7 @@ void *gui(void *parameter){
 		debouncerUpdate(&enc3Clock);
 		switch(enc3Switch.edge){
 			case NO_EDGE:
-				if(singleClickPending && ((counter - singleClickPending) > (DOUBLE_CLICK_DELAY_MS / 2))){
+				if(singleClickPending && ((counter - singleClickPending) > (DOUBLE_CLICK_DELAY_MS))){
 					// fprintf(stderr, "=> single click" "\n");
 					singleClickPending = 0;
 					guiEvent(GUI_EVENT_SINGLE_CLICK, 1);
@@ -207,11 +207,14 @@ void *gui(void *parameter){
 				break;
 			case RAISING_EDGE:
 				{
+					uint64_t buttonReleaseTick = counter;
 					// fprintf(stderr, "ENC3Switch: Raising" "\n");
 					uint64_t duration = counter - buttonPress;
 					if(duration > EXTRA_LONG_CLICK_DELAY_MS){
 						// Initiate shutdown
-						// u8g2_DrawStr(p, 0, 96, "SHUTDOWN");
+						u8g2_ClearBuffer(&u8g2);
+						u8g2_DrawStr(p, 0, 96, "SHUTDOWN");
+						u8g2_SendBuffer(p);
 						system("sync ; sudo shutdown -h now");
 					}else if(duration > LONG_CLICK_DELAY_MS){
 						// fprintf(stderr, "> 1s => long click" "\n");
@@ -225,13 +228,15 @@ void *gui(void *parameter){
 							// fprintf(stderr, "=> double click" "\n");
 							singleClickPending = 0;
 							guiEvent(GUI_EVENT_DOUBLE_CLICK, 1);
+							// Reset buttonRelease to avoid double click at the next click
+							buttonReleaseTick = 0;
 						}else{
 							// fprintf(stderr, "=> single click pending" "\n");
 							singleClickPending = counter;
 						}
 
 					}
-					buttonRelease = counter;
+					buttonRelease = buttonReleaseTick;
 				}
 
 				break;
@@ -286,6 +291,7 @@ int main(int argc, const char *argv[])
   u8g2_SetDrawColor(&u8g2, 1);
 #endif
   u8g2_t *p = &u8g2;
+  u8g2_SetFont(&u8g2, u8g2_font_6x13_tf);
   if(argc > 1){
 	  FILE *logo = fopen(argv[1], "rb");
 	  if(logo){
@@ -317,7 +323,6 @@ int main(int argc, const char *argv[])
 		  fclose(logo);
 	  }
   }else{
-	  u8g2_SetFont(&u8g2, u8g2_font_6x13_tf);
 	  frameBuffer = u8g2_GetBufferPtr(&u8g2);
 	  u8g2_DrawStr(p, 16, 16, "Five Pi");
 	  u8g2_DrawStr(p, 8, 32, "A Pi 5");
@@ -334,6 +339,9 @@ int main(int argc, const char *argv[])
   // Scan IPv4 addresses for eth0 and wlan0
   for(;;){
 	  sleep(1);
+	  // u8g2_DrawStr(p, 0, 96, "wlan0:");
+	  // u8g2_DrawStr(p, 0, 112, "eth0:");
+	  // u8g2_SendBuffer(p);
   }
 
   return 0;
