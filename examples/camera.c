@@ -266,7 +266,14 @@ void *gui(void *parameter){
 						u8g2_ClearBuffer(&u8g2);
 						u8g2_DrawStr(p, 0, 96, "SHUTDOWN");
 						u8g2_SendBuffer(p);
-						system("sync ; sudo shutdown -h now");
+						guiEvent(GUI_EVENT_EXTRA_LONG_CLICK, 1);
+						int result = system("kill $(ps aux |grep nc|grep \"localhost 56789\" |awk '{print $2}')");
+						fprintf(stderr, "%s@%d:result=%i" "\n", __func__, __LINE__, result);
+					       	usleep(1000000);
+						result = system("sync");
+						fprintf(stderr, "%s@%d:result=%i" "\n", __func__, __LINE__, result);
+						result = system("sudo shutdown -h now");
+						fprintf(stderr, "%s@%d:result=%i" "\n", __func__, __LINE__, result);
 					}else if(duration > LONG_CLICK_DELAY_MS){
 						// fprintf(stderr, "> 1s => long click" "\n");
 						singleClickPending = 0;
