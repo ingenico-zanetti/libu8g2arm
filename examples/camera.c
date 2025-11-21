@@ -267,9 +267,18 @@ void *gui(void *parameter){
 						u8g2_DrawStr(p, 0, 96, "SHUTDOWN");
 						u8g2_SendBuffer(p);
 						guiEvent(GUI_EVENT_EXTRA_LONG_CLICK, 1);
-						int result = system("kill $(ps aux |grep nc|grep \"localhost 56789\" |awk '{print $2}')");
+						int result = system("touch /tmp/shutdown"); // prevent record from restarting
+						result = system("kill $(ps aux |grep \"\\./h264stream\"|grep -v grep | awk '{print $2'})");
 						fprintf(stderr, "%s@%d:result=%i" "\n", __func__, __LINE__, result);
-					       	usleep(1000000);
+						for(int i = 0 ; i < 100 ; i++){
+							result = system("ps aux |grep ffmpeg|grep h264|grep -v sh");
+							fprintf(stderr, "%s@%d:result=%i" "\n", __func__, __LINE__, result);
+							if(0 == result){
+								usleep(100000);
+							}else{
+								break;
+							}
+						}
 						result = system("sync");
 						fprintf(stderr, "%s@%d:result=%i" "\n", __func__, __LINE__, result);
 						result = system("sudo shutdown -h now");
