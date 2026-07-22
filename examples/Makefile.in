@@ -3,7 +3,7 @@ INST=@prefix@
 
 CPPFLAGS += -W -Wall -I$(INST)/include/
 LDFLAGS += -L$(INST)/lib
-LDLIBS += -l:libu8g2arm.a
+LDLIBS += -l:libu8g2arm.a -lgpiod
 CXXFLAGS += -std=c++11
 
 ifdef ENABLE_SDL
@@ -12,6 +12,12 @@ ifdef ENABLE_SDL
 endif
 
 default:
+
+camera: camera.c
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+camera2: camera2.c
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
 ex_init_command_line: ex_init_command_line.cpp u8x8_d_sdl.o
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $^ $(LDLIBS) -o $@
